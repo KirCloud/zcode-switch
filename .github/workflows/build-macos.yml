@@ -8,19 +8,9 @@ permissions:
 
 jobs:
   build:
-    name: macOS (${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
+    name: macOS (ARM64)
+    runs-on: macos-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: aarch64
-            os: macos-latest
-            target: aarch64-apple-darwin
-          - arch: x64
-            os: macos-26-intel
-            target: x86_64-apple-darwin
 
     steps:
       - uses: actions/checkout@v4
@@ -32,12 +22,12 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          key: macos-${{ matrix.target }}
+          key: macos-aarch64-apple-darwin
 
       - name: Install frontend dependencies
         run: npm ci
@@ -46,23 +36,23 @@ jobs:
         env:
           # Ad-hoc signing works without an Apple Developer certificate.
           APPLE_SIGNING_IDENTITY: '-'
-        run: npm run tauri -- build --ci --target ${{ matrix.target }} --bundles dmg -- --locked
+        run: npm run tauri -- build --ci --target aarch64-apple-darwin --bundles app,dmg -- --locked
 
       - name: Check packaged app startup
-        run: python3 scripts/smoke-macos.py src-tauri/target/${{ matrix.target }}/release/bundle/macos/zcode-switch.app
+        run: python3 scripts/smoke-macos.py src-tauri/target/aarch64-apple-darwin/release/bundle/macos/zcode-switch.app
 
       - name: Collect DMG and checksums
         shell: bash
         run: |
           mkdir -p dist-macos
-          cp src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg dist-macos/
+          cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg dist-macos/
           cd dist-macos
           shasum -a 256 ./*.dmg > SHA256SUMS.txt
 
       - name: Upload macOS installer
         uses: actions/upload-artifact@v4
         with:
-          name: zcode-switch-macos-${{ matrix.arch }}
+          name: zcode-switch-macos-aarch64
           path: dist-macos/
           if-no-files-found: error
           retention-days: 30
