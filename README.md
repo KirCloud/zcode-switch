@@ -60,6 +60,15 @@ npm run tauri build    # NSIS 安装包
 
 Windows 优先（路径探测 / 进程管理 / 托盘均为 Win32 语义）。
 
+### GitHub Actions 打包 macOS
+
+在仓库的 **Actions → Build macOS → Run workflow** 中启动构建。完成后，在该次运行的 **Artifacts** 下载：
+
+- `zcode-switch-macos-aarch64`：Apple 芯片的 DMG 安装包
+- `zcode-switch-macos-x64`：Intel 芯片的 DMG 安装包
+
+每个下载包都包含 `SHA256SUMS.txt` 校验和，构建产物保留 30 天。应用采用临时签名（ad-hoc），未经过 Apple 公证；首次打开可能需要在「系统设置 → 隐私与安全性」中允许打开。
+
 ## License
 
 [MIT](./LICENSE)

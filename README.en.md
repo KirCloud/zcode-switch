@@ -60,6 +60,15 @@ npm run tauri build    # NSIS installer
 
 Windows-first (path detection / process management / tray are all Win32 semantics).
 
+### Build macOS with GitHub Actions
+
+Open **Actions → Build macOS → Run workflow** in the repository. Once the run completes, download its **Artifacts**:
+
+- `zcode-switch-macos-aarch64`: DMG installer for Apple Silicon
+- `zcode-switch-macos-x64`: DMG installer for Intel
+
+Each download includes `SHA256SUMS.txt`. Artifacts are retained for 30 days. The app is ad-hoc signed and is not notarized by Apple; you may need to allow it in **System Settings → Privacy & Security** on first launch.
+
 ## License
 
 [MIT](./LICENSE)

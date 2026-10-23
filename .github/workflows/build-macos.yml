@@ -1,0 +1,65 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            os: macos-15
+            target: aarch64-apple-darwin
+          - arch: x64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: macos-${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build DMG
+        env:
+          # Ad-hoc signing works without an Apple Developer certificate.
+          APPLE_SIGNING_IDENTITY: '-'
+        run: npm run tauri -- build --ci --target ${{ matrix.target }} --bundles dmg -- --locked
+
+      - name: Collect DMG and checksums
+        shell: bash
+        run: |
+          mkdir -p dist-macos
+          cp src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg dist-macos/
+          cd dist-macos
+          shasum -a 256 ./*.dmg > SHA256SUMS.txt
+
+      - name: Upload macOS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: zcode-switch-macos-${{ matrix.arch }}
+          path: dist-macos/
+          if-no-files-found: error
+          retention-days: 30
