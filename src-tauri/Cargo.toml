@@ -41,6 +41,11 @@ windows-sys = { version = "0.52", features = [
 # X-Client-Timezone 的 IANA 名（Node Intl 同源）
 iana-time-zone = "0.1"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSImage", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSBundle", "NSData", "NSString"] }
+
 [profile.release]
 strip = "symbols"
 lto = "thin"

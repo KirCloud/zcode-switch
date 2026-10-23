@@ -48,6 +48,9 @@ jobs:
           APPLE_SIGNING_IDENTITY: '-'
         run: npm run tauri -- build --ci --target ${{ matrix.target }} --bundles dmg -- --locked
 
+      - name: Check packaged app startup
+        run: python3 scripts/smoke-macos.py src-tauri/target/${{ matrix.target }}/release/bundle/macos/zcode-switch.app
+
       - name: Collect DMG and checksums
         shell: bash
         run: |

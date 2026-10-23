@@ -1,6 +1,8 @@
 pub mod cipher;
 pub mod cli;
 pub mod i18n;
+#[cfg(target_os = "macos")]
+mod macos_icon;
 mod claim;
 mod flowlog;
 mod oauth;
@@ -923,45 +925,8 @@ fn decode_data_url_or_base64(raw: &str) -> Option<Vec<u8>> {
 
 #[cfg(target_os = "macos")]
 fn set_platform_dock_icon(png_bytes: Option<&[u8]>) {
-    use std::ffi::c_void;
-    #[link(name = "AppKit", kind = "framework")]
-    extern "C" {
-        fn objc_getClass(name: *const u8) -> *mut c_void;
-        fn sel_registerName(name: *const u8) -> *mut c_void;
-        fn objc_msgSend(receiver: *mut c_void, sel: *mut c_void, ...) -> *mut c_void;
-    }
-
-    unsafe {
-        let ns_app_cls = objc_getClass(b"NSApplication\0".as_ptr());
-        if ns_app_cls.is_null() {
-            return;
-        }
-        let shared_app_sel = sel_registerName(b"sharedApplication\0".as_ptr());
-        let set_app_icon_sel = sel_registerName(b"setApplicationIconImage:\0".as_ptr());
-        let app_inst = objc_msgSend(ns_app_cls, shared_app_sel);
-        if app_inst.is_null() {
-            return;
-        }
-
-        match png_bytes {
-            Some(bytes) => {
-                let ns_data_cls = objc_getClass(b"NSData\0".as_ptr());
-                let data_with_bytes_sel = sel_registerName(b"dataWithBytes:length:\0".as_ptr());
-                let data_obj = objc_msgSend(ns_data_cls, data_with_bytes_sel, bytes.as_ptr(), bytes.len());
-
-                let ns_image_cls = objc_getClass(b"NSImage\0".as_ptr());
-                let alloc_sel = sel_registerName(b"alloc\0".as_ptr());
-                let init_with_data_sel = sel_registerName(b"initWithData:\0".as_ptr());
-                let img_alloc = objc_msgSend(ns_image_cls, alloc_sel);
-                let img_obj = objc_msgSend(img_alloc, init_with_data_sel, data_obj);
-
-                let _ = objc_msgSend(app_inst, set_app_icon_sel, img_obj);
-            }
-            None => {
-                let _ = objc_msgSend(app_inst, set_app_icon_sel, std::ptr::null_mut::<c_void>());
-            }
-        }
-    }
+    // Typed AppKit bindings preserve the arm64 calling convention.
+    macos_icon::set_dock_icon(png_bytes.unwrap_or(DEFAULT_ICON_PNG));
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -979,53 +944,10 @@ fn apply_dock_icon(logo: &str) {
 
 #[cfg(target_os = "macos")]
 fn update_app_bundle_icon(logo: &str) {
-    use std::ffi::c_void;
-    #[link(name = "AppKit", kind = "framework")]
-    extern "C" {
-        fn objc_getClass(name: *const u8) -> *mut c_void;
-        fn sel_registerName(name: *const u8) -> *mut c_void;
-        fn objc_msgSend(receiver: *mut c_void, sel: *mut c_void, ...) -> *mut c_void;
-    }
-
-    let png_bytes = if logo.is_empty() || logo == "default" {
-        None
-    } else {
-        decode_data_url_or_base64(logo)
-    };
-
-    unsafe {
-        let ns_bundle_cls = objc_getClass(b"NSBundle\0".as_ptr());
-        if ns_bundle_cls.is_null() { return; }
-        let main_bundle_sel = sel_registerName(b"mainBundle\0".as_ptr());
-        let main_bundle = objc_msgSend(ns_bundle_cls, main_bundle_sel);
-        if main_bundle.is_null() { return; }
-        let bundle_path_sel = sel_registerName(b"bundlePath\0".as_ptr());
-        let bundle_path = objc_msgSend(main_bundle, bundle_path_sel);
-        if bundle_path.is_null() { return; }
-
-        let ns_workspace_cls = objc_getClass(b"NSWorkspace\0".as_ptr());
-        if ns_workspace_cls.is_null() { return; }
-        let shared_ws_sel = sel_registerName(b"sharedWorkspace\0".as_ptr());
-        let ws_inst = objc_msgSend(ns_workspace_cls, shared_ws_sel);
-        if ws_inst.is_null() { return; }
-
-        let set_icon_sel = sel_registerName(b"setIcon:forFile:options:\0".as_ptr());
-
-        if let Some(bytes) = png_bytes {
-            let ns_data_cls = objc_getClass(b"NSData\0".as_ptr());
-            let data_with_bytes_sel = sel_registerName(b"dataWithBytes:length:\0".as_ptr());
-            let data_obj = objc_msgSend(ns_data_cls, data_with_bytes_sel, bytes.as_ptr(), bytes.len());
-
-            let ns_image_cls = objc_getClass(b"NSImage\0".as_ptr());
-            let alloc_sel = sel_registerName(b"alloc\0".as_ptr());
-            let init_with_data_sel = sel_registerName(b"initWithData:\0".as_ptr());
-            let img_alloc = objc_msgSend(ns_image_cls, alloc_sel);
-            let img_obj = objc_msgSend(img_alloc, init_with_data_sel, data_obj);
-
-            let _ = objc_msgSend(ws_inst, set_icon_sel, img_obj, bundle_path, 0usize);
-        } else {
-            let _ = objc_msgSend(ws_inst, set_icon_sel, std::ptr::null_mut::<c_void>(), bundle_path, 0usize);
-        }
+    if logo.is_empty() || logo == "default" {
+        macos_icon::set_bundle_icon(None);
+    } else if let Some(bytes) = decode_data_url_or_base64(logo) {
+        macos_icon::set_bundle_icon(Some(&bytes));
     }
 }
 
@@ -1090,9 +1012,13 @@ async fn set_app_logo(app: AppHandle, logo: String) -> Result<(), String> {
         s.app_logo = Some(logo.clone());
         save_settings(&paths, &s)?;
     }
-    apply_dock_icon(&logo);
-    apply_tray_icon(&app, &logo);
-    update_app_bundle_icon(&logo);
+    let icon_app = app.clone();
+    let icon_logo = logo.clone();
+    app.run_on_main_thread(move || {
+        apply_dock_icon(&icon_logo);
+        apply_tray_icon(&icon_app, &icon_logo);
+        update_app_bundle_icon(&icon_logo);
+    }).map_err(|e| e.to_string())?;
     let _ = app.emit("logo-changed", logo);
     let _ = app.emit("state-changed", ());
     Ok(())
